@@ -1,17 +1,37 @@
 using Bogus;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using System.Diagnostics;
+using WebSimba.Constants;
 using WebSimba.Data;
 using WebSimba.Data.Entities;
+using WebSimba.Data.Entities.Identity;
+using WebSimba.Interfaces;
 using WebSimba.Mapper;
+using WebSimba.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddIdentity<UserEntity, RoleEntity>(options =>
+{
+    options.Stores.MaxLengthForKeys = 128;
+    options.Password.RequireDigit = false;
+    options.Password.RequiredLength = 5;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequireUppercase = false;
+    options.Password.RequireLowercase = false;
+})
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
 
 builder.Services.AddAutoMapper(typeof(AppMapperProfile));
+
+builder.Services.AddScoped<IImageWorker, ImageWorker>();
 
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -27,11 +47,11 @@ app.UseCors(opt =>
 
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+//if (app.Environment.IsDevelopment())
+//{
+app.UseSwagger();
+app.UseSwaggerUI();
+//}
 
 app.UseAuthorization();
 
@@ -81,30 +101,6 @@ if (!File.Exists(imageNo))
 }
 
 //Dependecy Injection
-using (var scope = app.Services.CreateScope())
-{
-    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    dbContext.Database.Migrate(); //Запусти міграції на БД, якщо їх там немає
-
-    if (!dbContext.Categories.Any())
-    {
-        const int number = 10;
-        var categories = new Faker("uk").Commerce
-            .Categories(number);
-        foreach (var name in categories)
-        {
-            var entity = dbContext.Categories.SingleOrDefault(c => c.Name == name);
-            if (entity != null)
-                continue;
-
-            entity = new CategoryEntity
-            {
-                Name = name
-            };
-            dbContext.Categories.Add(entity);
-            dbContext.SaveChanges();
-        }
-    }
-}
+app.SeedData();
 
 app.Run();
